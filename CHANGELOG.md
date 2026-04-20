@@ -1,5 +1,85 @@
 # Hermes Web UI -- Changelog
 
+## [v0.50.111] — 2026-04-20
+
+### Fixed
+- **Dark-mode user bubbles no longer use a glaring bright accent fill** — `:root.dark` now overrides `--user-bubble-bg`/`--user-bubble-border` to `var(--accent-bg-strong)` (a 15% tint), keeping the bubble visually subdued in dark skins. The 6 per-skin `--user-bubble-text` hacks are removed; text color falls back to `var(--text)`. Edit-area box-shadow now uses the shared `--focus-ring` token. (credit: @aronprins)
+- **Thinking card header is now collapsible** — the main `_thinkingMarkup()` function now includes `onclick` toggle and the chevron affordance, matching the compression reference card pattern. The header has `display:flex` for proper icon/label/chevron alignment.
+
+## [v0.50.110] — 2026-04-20
+
+### Fixed
+- **Message footer metadata is now consistent across user and assistant turns** — timestamps are available on both sides, but footer chrome stays hidden until hover instead of being always visible on assistant messages. The last assistant turn keeps cumulative `in/out/cost` usage visible, then reveals timestamp and actions inline on hover. Existing timestamps for unchanged historical messages are also preserved during transcript rebuilds, so older turns no longer get re-stamped to the newest reply time. (Fixes #680, credit: @franksong2702)
+
+## [v0.50.109] — 2026-04-20
+
+### Fixed
+- **Named custom provider test isolation** — `_models_with_cfg()` in `tests/test_custom_provider_display_name.py` now pins `_cfg_mtime` before calling `get_available_models()`, preventing the mtime-guard inside that function from firing `reload_config()` and silently discarding the patched `config.cfg`. This fixes an ordering-dependent test failure where any test that wrote `config.yaml` before this test ran would cause `get_available_models()` to return the real OpenRouter model list instead of the patched Agent37 group. (Fixes #754)
+
+## [v0.50.108] — 2026-04-20
+
+### Fixed
+- **Kimi K2.5 added to Kimi/Moonshot provider model list** — `kimi-k2.5` was present in `hermes_cli` but missing from the WebUI's `api/config.py` kimi-coding provider, making it unavailable in the model selector. (Fixes #740)
+
+## [v0.50.107] — 2026-04-20
+
+### Added
+- **Three-container UID/GID alignment guide in README** — new subsection explains why UIDs must match across containers sharing a bind-mounted volume, documents the variable name asymmetry (`HERMES_UID`/`HERMES_GID` for the agent image vs `WANTED_UID`/`WANTED_GID` for the WebUI image), gives the recommended `.env` setup for standard Linux and NAS/Unraid deployments, provides the one-time `chown` fix for existing installs, and notes that the dashboard volume must be read-write. (Fixes #645)
+
+### Fixed
+- **`HERMES_UID`/`HERMES_GID` forwarded to agent and dashboard containers** — `docker-compose.three-container.yml` now declares `HERMES_UID=${HERMES_UID:-10000}` and `HERMES_GID=${HERMES_GID:-10000}` in the environment blocks for `hermes-agent` and `hermes-dashboard`, making the documented `.env` recipe functional.
+
+## [v0.50.106] — 2026-04-20
+
+### Fixed
+- **`PermissionError` in auth signing key no longer crashes every HTTP request** — `key_file.exists()` in `api/auth.py`'s `_signing_key()` was called outside the try/except block. In three-container bind-mount setups where the agent container initialises the state directory under a different UID, `pathlib.Path.exists()` raises `PermissionError`, which escaped up through `is_auth_enabled()` → `check_auth()` and crashed every HTTP request with HTTP 500. The `exists()` call is now inside the try block so `PermissionError` is caught and falls back to an in-memory key. (PR #625)
+
+## [v0.50.105] — 2026-04-20
+
+### Fixed
+- **Profile deletion warning now leads with destructive impact** — the confirmation dialog now reads: "All sessions, config, skills, and memory for this profile will be permanently deleted. This cannot be undone." Updated across all 6 supported locales. (Fixes #637)
+
+## [v0.50.104] — 2026-04-20
+
+### Fixed
+- **Agent image URLs rewritten to actual server base** — when an agent emits a `MEDIA:http://localhost:8787/...` URL, the WebUI now rewrites the `localhost`/`127.0.0.1` host to the page's `document.baseURI` before inserting it as an `<img src>`. Fixes broken images for remote users (VPN, Docker, deployed servers) and preserves subpath mounts (e.g. `/hermes/`). (Fixes #642)
+
+## [v0.50.103] — 2026-04-20
+
+### Fixed
+- **Windows `.env` encoding fix** — `write_text()` calls in `api/profiles.py` were missing `encoding='utf-8'`, causing failures on Windows systems with non-UTF-8 locale encodings. All file I/O in `api/` now explicitly specifies `encoding='utf-8'`. (Fixes #741)
+
+## [v0.50.102] — 2026-04-20
+
+### Fixed
+- **Code blocks no longer lose newlines when not preceded by a blank line** — `renderMd()` now stashes `<pre>` blocks (including language-labelled wrappers), mermaid diagrams, and katex blocks before the paragraph-splitting pass, then restores them. Previously, if a fenced code block was not separated from surrounding text by a blank line, all `\n` inside it were replaced with `<br>`, collapsing the entire block to one line. (Fixes #745)
+
+## [v0.50.101] — 2026-04-20
+
+### Fixed
+- **Session model normalization: null/empty model no longer triggers index rebuild** — sessions with no stored model (`model: null` or missing) now return the provider default without writing to disk. Previously a spurious `session.save()` (and full session index rebuild) could fire for any such session. (#751 follow-up)
+
+## [v0.50.100] — 2026-04-20
+
+### Fixed
+- **Session model normalization: unknown provider prefixes now pass through** — custom/unlisted model prefixes (e.g. `custom-provider/my-model`) are no longer incorrectly stripped when switching providers. Only well-known provider prefixes (`gpt-`, `claude-`, `gemini-`, etc.) are normalized. Regression introduced in v0.50.99. (#751)
+
+## [v0.50.99] — 2026-04-20
+
+### Fixed
+- **Stale session models normalized after provider switch** — sessions that still reference a model from a previous provider (e.g. a `gemini-*` model after switching to OpenAI Codex) are silently corrected to the current provider's default on load, preventing startup failures. (Closes #748, credit: @likawa3b)
+
+## [v0.50.98] — 2026-04-20
+
+### Fixed
+- **Slash command autocomplete constrained to composer width** — the `/` command dropdown is now positioned inside the composer box, so suggestions stay visually anchored to the input area rather than expanding across the full chat panel. (Closes #633, credit: @franksong2702)
+
+## [v0.50.97] — 2026-04-20
+
+### Fixed
+- **Only the latest user message can be edited** — older user turns no longer show the pencil/edit affordance. This avoids implying that historical turns can be lightly edited when the actual action truncates the session and restarts the conversation from that point. (Closes #744)
+- **Message footer metadata is now consistent across user and assistant turns** — timestamps are available on both sides using the existing `_ts` / `timestamp` fields, but footer chrome now stays hidden until hover instead of being always visible on assistant messages. The last assistant turn keeps cumulative `in/out/cost` usage visible, then reveals timestamp and actions inline on hover so the footer does not grow an extra row. Existing timestamps for unchanged historical messages are also preserved during transcript rebuilds, so older turns no longer get re-stamped to the newest reply time.
+
 ## [v0.50.96] — 2026-04-19
 
 ### Added
@@ -23,6 +103,10 @@
 - **Workspace file panel shows an empty-state message** instead of a blank pane when no workspace is configured or the directory is empty. (#703)
 - **Notification settings description uses "app" instead of "tab"** — more accurate for native Mac app users. (#704)
 (PR #712)
+## [v0.50.95] — 2026-04-19
+
+### Fixed
+- **Assistant messages now show footer timestamps, and older messages show a fuller date+time** — assistant response segments now render the same footer timestamp affordance as user messages, using the existing message `_ts` / `timestamp` fields already stamped by the WebUI. Messages from today still show a compact time-only label, while older messages now show a fuller date+time string directly in the footer for better readability when reviewing past sessions.
 
 ## [v0.50.94] — 2026-04-19
 
