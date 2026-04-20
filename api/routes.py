@@ -22,6 +22,10 @@ from api.config import (
     SESSION_DIR,
     DEFAULT_WORKSPACE,
     DEFAULT_MODEL,
+    MANAGED_MODEL,
+    MANAGED_MODEL_LOCKED,
+    MANAGED_LANGUAGE,
+    MANAGED_LANGUAGE_LOCKED,
     SESSIONS,
     SESSIONS_MAX,
     LOCK,
@@ -467,6 +471,12 @@ def handle_get(handler, parsed) -> bool:
         settings = load_settings()
         # Never expose the stored password hash to clients
         settings.pop("password_hash", None)
+        settings["default_model_locked"] = MANAGED_MODEL_LOCKED
+        settings["language_locked"] = MANAGED_LANGUAGE_LOCKED
+        if MANAGED_MODEL_LOCKED:
+            settings["default_model"] = MANAGED_MODEL
+        if MANAGED_LANGUAGE_LOCKED:
+            settings["language"] = MANAGED_LANGUAGE
         return j(handler, settings)
 
     if parsed.path == "/api/onboarding/status":

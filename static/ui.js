@@ -318,6 +318,7 @@ function renderModelDropdown(){
 }
 
 async function selectModelFromDropdown(value){
+  if(window._managedModelLocked) return;
   const sel=$('modelSelect');
   if(!sel||sel.value===value) { closeModelDropdown(); return; }
   // If the value isn't in the option list (custom model ID), add a temporary option
@@ -342,6 +343,7 @@ function toggleModelDropdown(){
   const chip=$('composerModelChip');
   const sel=$('modelSelect');
   if(!dd||!chip||!sel) return;
+  if(window._managedModelLocked) return;
   const open=dd.classList.contains('open');
   if(open){closeModelDropdown(); return;}
   if(typeof closeProfileDropdown==='function') closeProfileDropdown();
@@ -1114,11 +1116,16 @@ function syncTopbar(){
   // If a profile switch just happened, apply its model rather than the session's stale value.
   // S._pendingProfileModel is set by switchToProfile() and cleared here after one application.
   const modelOverride=S._pendingProfileModel;
-  let currentModel=S.session.model||'';
+  let currentModel=(window._managedModelLocked&&window._managedModelValue)
+    ? window._managedModelValue
+    : (S.session.model||'');
   if(modelOverride){
     S._pendingProfileModel=null;
     _applyModelToDropdown(modelOverride,$('modelSelect'));
     currentModel=modelOverride;
+  } else if(window._managedModelLocked&&window._managedModelValue){
+    _applyModelToDropdown(window._managedModelValue,$('modelSelect'));
+    currentModel=window._managedModelValue;
   } else {
     const applied=_applyModelToDropdown(currentModel,$('modelSelect'));
     // If the model isn't in the current provider list, add it as a visually marked

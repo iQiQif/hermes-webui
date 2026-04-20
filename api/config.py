@@ -282,7 +282,25 @@ def _discover_default_workspace() -> Path:
 
 
 DEFAULT_WORKSPACE = _discover_default_workspace()
-DEFAULT_MODEL = os.getenv("HERMES_WEBUI_DEFAULT_MODEL", "")  # Empty = use provider default; avoids showing unavailable OpenAI model to non-OpenAI users (#646)
+MANAGED_PROVIDER = (os.getenv("HERMES_DESKTOP_MANAGED_PROVIDER", "") or "").strip().lower()
+MANAGED_BASE_URL = (os.getenv("HERMES_DESKTOP_MANAGED_BASE_URL", "") or "").strip()
+MANAGED_API_KEY = (os.getenv("HERMES_DESKTOP_MANAGED_API_KEY", "") or "").strip()
+MANAGED_MODEL = (os.getenv("HERMES_DESKTOP_MANAGED_MODEL", "") or "").strip()
+MANAGED_LANGUAGE = (os.getenv("HERMES_DESKTOP_MANAGED_LANGUAGE", "") or "").strip()
+_MANAGED_PROVIDER_ENV_VARS = {
+    "zai": "GLM_API_KEY",
+    "minimax": "MINIMAX_API_KEY",
+    "minimax-cn": "MINIMAX_CN_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+}
+MANAGED_PROVIDER_ENV_VAR = _MANAGED_PROVIDER_ENV_VARS.get(MANAGED_PROVIDER, "OPENAI_API_KEY")
+MANAGED_MODEL_LOCKED = bool(MANAGED_MODEL)
+MANAGED_LANGUAGE_LOCKED = bool(MANAGED_LANGUAGE)
+DEFAULT_MODEL = MANAGED_MODEL or os.getenv("HERMES_WEBUI_DEFAULT_MODEL", "")  # Empty = use provider default; avoids showing unavailable OpenAI model to non-OpenAI users (#646)
 
 
 # ── Startup diagnostics ───────────────────────────────────────────────────────
@@ -1240,7 +1258,7 @@ def _get_session_agent_lock(session_id: str) -> threading.Lock:
 _SETTINGS_DEFAULTS = {
     "default_model": DEFAULT_MODEL,
     "default_workspace": str(DEFAULT_WORKSPACE),
-    "onboarding_completed": False,
+    "onboarding_completed": bool(MANAGED_MODEL or MANAGED_LANGUAGE),
     "send_key": "enter",  # 'enter' or 'ctrl+enter'
     "show_token_usage": False,  # show input/output token badge below assistant messages
     "show_cli_sessions": False,  # merge CLI sessions from state.db into the sidebar
@@ -1248,7 +1266,7 @@ _SETTINGS_DEFAULTS = {
     "check_for_updates": True,  # check if webui/agent repos are behind upstream
     "theme": "dark",  # light | dark | system
     "skin": "default",  # accent color skin: default | ares | mono | slate | poseidon | sisyphus | charizard
-    "language": "en",  # UI locale code; must match a key in static/i18n.js LOCALES
+    "language": MANAGED_LANGUAGE or "en",  # UI locale code; must match a key in static/i18n.js LOCALES
     "bot_name": os.getenv(
         "HERMES_WEBUI_BOT_NAME", "Hermes"
     ),  # display name for the assistant
@@ -1344,6 +1362,12 @@ def load_settings() -> dict:
         stored.get("theme") if isinstance(stored, dict) else settings.get("theme"),
         stored.get("skin") if isinstance(stored, dict) else settings.get("skin"),
     )
+    if MANAGED_MODEL_LOCKED:
+        settings["default_model"] = MANAGED_MODEL
+        settings["onboarding_completed"] = True
+    if MANAGED_LANGUAGE_LOCKED:
+        settings["language"] = MANAGED_LANGUAGE
+        settings["onboarding_completed"] = True
     return settings
 
 
@@ -1382,6 +1406,10 @@ def save_settings(settings: dict) -> dict:
     # Handle _clear_password: explicitly disable auth
     if settings.pop("_clear_password", False):
         current["password_hash"] = None
+    if MANAGED_MODEL_LOCKED:
+        settings.pop("default_model", None)
+    if MANAGED_LANGUAGE_LOCKED:
+        settings.pop("language", None)
     for k, v in settings.items():
         if k in _SETTINGS_ALLOWED_KEYS:
             if k == "theme":
@@ -1406,6 +1434,12 @@ def save_settings(settings: dict) -> dict:
             if k in _SETTINGS_BOOL_KEYS:
                 v = bool(v)
             current[k] = v
+    if MANAGED_MODEL_LOCKED:
+        current["default_model"] = MANAGED_MODEL
+        current["onboarding_completed"] = True
+    if MANAGED_LANGUAGE_LOCKED:
+        current["language"] = MANAGED_LANGUAGE
+        current["onboarding_completed"] = True
     theme_value = pending_theme
     skin_value = pending_skin
     if theme_was_explicit and not skin_was_explicit:
@@ -1428,6 +1462,62 @@ def save_settings(settings: dict) -> dict:
     if "default_workspace" in current:
         DEFAULT_WORKSPACE = resolve_default_workspace(current["default_workspace"])
     return current
+
+
+def _apply_managed_profile_defaults() -> None:
+    """Preseed the active profile config/.env for the desktop managed defaults."""
+    if not (MANAGED_PROVIDER and MANAGED_MODEL and MANAGED_BASE_URL):
+        return
+
+    config_path = _get_config_path()
+    try:
+        import yaml as _yaml
+
+        cfg_data = {}
+        if config_path.exists():
+            loaded = _yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                cfg_data = loaded
+
+        model_cfg = cfg_data.get("model", {})
+        if not isinstance(model_cfg, dict):
+            model_cfg = {}
+        model_cfg["provider"] = MANAGED_PROVIDER
+        model_cfg["default"] = MANAGED_MODEL
+        model_cfg["base_url"] = MANAGED_BASE_URL
+        cfg_data["model"] = model_cfg
+
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            _yaml.safe_dump(cfg_data, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+    except Exception:
+        logger.debug("Failed to apply managed desktop config", exc_info=True)
+
+    if MANAGED_API_KEY:
+        env_path = config_path.parent / ".env"
+        env_values = {}
+        if env_path.exists():
+            try:
+                for raw in env_path.read_text(encoding="utf-8").splitlines():
+                    line = raw.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    env_values[key.strip()] = value.strip().strip('"').strip("'")
+            except Exception:
+                logger.debug("Failed to parse managed .env before update")
+        env_values[MANAGED_PROVIDER_ENV_VAR] = MANAGED_API_KEY
+        try:
+            env_path.parent.mkdir(parents=True, exist_ok=True)
+            env_path.write_text(
+                "\n".join(f"{key}={env_values[key]}" for key in sorted(env_values)) + "\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            logger.debug("Failed to write managed .env", exc_info=True)
+        os.environ[MANAGED_PROVIDER_ENV_VAR] = MANAGED_API_KEY
 
 
 # Apply saved settings on startup (override env-derived defaults)
@@ -1468,3 +1558,17 @@ try:
     init_profile_state()
 except ImportError:
     pass  # hermes_cli not available -- default profile only
+
+_apply_managed_profile_defaults()
+reload_config()
+if MANAGED_MODEL_LOCKED or MANAGED_LANGUAGE_LOCKED:
+    try:
+        save_settings(
+            {
+                "default_model": MANAGED_MODEL,
+                "language": MANAGED_LANGUAGE,
+                "onboarding_completed": True,
+            }
+        )
+    except Exception:
+        logger.debug("Failed to persist managed settings", exc_info=True)

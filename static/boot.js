@@ -431,6 +431,12 @@ function clearPreview(){
 $('btnClearPreview').onclick=handleWorkspaceClose;
 // workspacePath click handler removed -- use topbar workspace chip dropdown instead
 $('modelSelect').onchange=async()=>{
+  if(window._managedModelLocked){
+    const lockedModel=window._managedModelValue||$('modelSelect').value;
+    $('modelSelect').value=lockedModel;
+    if(typeof syncModelChip==='function') syncModelChip();
+    return;
+  }
   if(!S.session)return;
   const selectedModel=$('modelSelect').value;
   if(typeof closeModelDropdown==='function') closeModelDropdown();
@@ -736,9 +742,9 @@ function _buildSkinPicker(activeSkin){
 function applyBotName(){
   const name=window._botName||'Hermes';
   document.title=name;
-  const sidebarH1=document.querySelector('.sidebar-header h1');
+  const sidebarH1=document.querySelector('[data-role="bot-name"]');
   if(sidebarH1) sidebarH1.textContent=name;
-  const logo=document.querySelector('.sidebar-header .logo');
+  const logo=document.querySelector('[data-role="bot-logo"]');
   if(logo) logo.textContent=name.charAt(0).toUpperCase();
   const topbarTitle=$('topbarTitle');
   if(topbarTitle && (!S.session)) topbarTitle.textContent=name;
@@ -758,6 +764,10 @@ function applyBotName(){
     window._soundEnabled=!!s.sound_enabled;
     window._notificationsEnabled=!!s.notifications_enabled;
     window._botName=s.bot_name||'Hermes';
+    window._managedModelLocked=!!s.default_model_locked;
+    window._managedModelValue=s.default_model||'';
+    window._managedLanguageLocked=!!s.language_locked;
+    window._managedLanguageValue=s.language||'';
     const appearance=_normalizeAppearance(s.theme,s.skin);
     localStorage.setItem('hermes-theme',appearance.theme);
     _applyTheme(appearance.theme);
@@ -779,6 +789,10 @@ function applyBotName(){
     window._soundEnabled=false;
     window._notificationsEnabled=false;
     window._botName='Hermes';
+    window._managedModelLocked=false;
+    window._managedModelValue='';
+    window._managedLanguageLocked=false;
+    window._managedLanguageValue='';
     _bootSettings={check_for_updates:false};
     document.body.classList.remove('bubble-layout');
     if(typeof setLocale==='function'){
@@ -806,7 +820,9 @@ function applyBotName(){
   await populateModelDropdown();
   // Restore last-used model preference
   const savedModel=localStorage.getItem('hermes-webui-model');
-  if(savedModel && $('modelSelect')){
+  if(window._managedModelLocked && $('modelSelect')){
+    $('modelSelect').value=window._managedModelValue||$('modelSelect').value;
+  } else if(savedModel && $('modelSelect')){
     $('modelSelect').value=savedModel;
     // If the value didn't take (model not in list), clear the bad pref
     if($('modelSelect').value!==savedModel) localStorage.removeItem('hermes-webui-model');

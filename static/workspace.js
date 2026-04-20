@@ -237,16 +237,28 @@ async function openFile(path){
   }
 }
 
-function downloadFile(path){
+async function downloadFile(path){
   if(!S.session)return;
-  // Trigger browser download via the raw file endpoint with content-disposition attachment
-  const url=`api/file/raw?session_id=${encodeURIComponent(S.session.session_id)}&path=${encodeURIComponent(path)}&download=1`;
   const filename=path.split('/').pop();
-  const a=document.createElement('a');
-  a.href=url;a.download=filename;
-  document.body.appendChild(a);a.click();
-  setTimeout(()=>document.body.removeChild(a),100);
-  showToast(t('downloading',filename),2000);
+  try{
+    const invoke=
+      window.__TAURI__?.core?.invoke ||
+      window.__TAURI_INTERNALS__?.invoke;
+    if(invoke&&S.session.workspace){
+      await invoke('reveal_workspace_file',{workspace:S.session.workspace,relPath:path});
+      showToast(t('file_revealed',filename),2000);
+      return;
+    }
+    // Browser fallback: trigger download via the raw file endpoint.
+    const url=`api/file/raw?session_id=${encodeURIComponent(S.session.session_id)}&path=${encodeURIComponent(path)}&download=1`;
+    const a=document.createElement('a');
+    a.href=url;a.download=filename||'download';
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>document.body.removeChild(a),100);
+    showToast(t('downloading',filename),2000);
+  }catch(e){
+    setStatus(t('file_open_failed')+': '+(e&&e.message?e.message:e));
+  }
 }
 
 

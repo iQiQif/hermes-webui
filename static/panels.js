@@ -1234,6 +1234,7 @@ async function loadSettingsPanel(){
         }
       }catch(e){}
       modelSel.value=settings.default_model||'';
+      modelSel.disabled=!!settings.default_model_locked;
       modelSel.addEventListener('change',_markSettingsDirty,{once:false});
     }
     // Send key preference
@@ -1251,6 +1252,7 @@ async function loadSettingsPanel(){
         }
       }
       langSel.value=resolvedLanguage;
+      langSel.disabled=!!settings.language_locked;
       langSel.addEventListener('change',_markSettingsDirty,{once:false});
     }
     const showUsageCb=$('settingsShowTokenUsage');

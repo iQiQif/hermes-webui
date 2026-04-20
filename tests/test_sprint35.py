@@ -95,6 +95,26 @@ def test_render_file_breadcrumb_called_from_open_file():
     )
 
 
+def test_download_file_prefers_tauri_reveal_command():
+    """downloadFile() must prefer the desktop reveal command for download-only files."""
+    src = read("static/workspace.js")
+    idx = src.find("async function downloadFile")
+    assert idx != -1, "downloadFile() must be async so reveal failures can be surfaced"
+    block = src[idx:idx + 1200]
+    assert "window.__TAURI_INTERNALS__?.invoke" in block, (
+        "downloadFile() must support the Tauri internals bridge before falling back"
+    )
+    assert "reveal_workspace_file" in block, (
+        "downloadFile() must call the reveal_workspace_file desktop command"
+    )
+    assert "file_revealed" in block, (
+        "downloadFile() must show a reveal-specific toast instead of the download toast"
+    )
+    assert "api/file/raw" in block, (
+        "downloadFile() must retain browser download fallback for non-Tauri environments"
+    )
+
+
 def test_breadcrumb_has_root_segment():
     """renderFileBreadcrumb must add a root '~' segment."""
     src = read("static/workspace.js")
